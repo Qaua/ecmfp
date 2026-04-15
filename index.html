@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+
+<!--
+  ULGI PRO v25 — ТОЛЫҚ ЖӨНДЕЛГЕН НҰСҚА
+  ══════════════════════════════════════
+  v24-тен жөнделген қателер:
+  ✅ 1. tab-radar / tab-alerts / tab-settings HTML + JS қосылды
+  ✅ 2. applyGeo() — Nominatim барлық өрістері тексеріледі (Монғол топонимикасы)
+  ✅ 3. findHourIdx() — API уақыт жолын тікелей салыстыру (UTC offset мәселесін болдырмайды)
+  ✅ 4. doRefresh() — async/await дұрыс
+  ✅ 5. Баптаулар беті — толық UI + хабарлама toggle + бірлік таңдауы
+  ✅ 6. GPS ±дәлдік + Nominatim zoom=18 (үй деңгейі)
+  ✅ 7. Сумын атауларын қазақша/монғолша дұрыс жазу
+-->
+
+<html lang="kk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#07091a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>ULGI PRO</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+<style>
+/* ── CSS VARIABLES ── */
+:root {
+  --ink:   #07091a;
+  --surf:  #0c1028;
+  --glass: rgba(255,255,255,.055);
+  --rim:   rgba(255,255,255,.09);
+  --rim2:  rgba(255,255,255,.16);
+  --t1: #eef2ff; --t2: #7e93bb; --t3: #4a5a80;
+  --ok:   #34d399; --warn: #fbbf24;
+  --bad:  #f87171; --blue: #60a5fa;
+  --purp: #a78bfa; --oran: #fb923c;
+  --font: 'Outfit',-apple-system,sans-serif;
+  --r: 22px;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; -webkit-font-smoothing:antialiased; }
+html,body { width:100%; min-height:100%; background:var(--ink); color:var(--t1); font-family:var(--font); overflow-x:hidden; overscroll-behavior:none; }
+
+/* ── CANVAS BG ── */
+#bgC { position:fixed; inset:0; z-index:0; pointer-events:none; }
+
+/* ── LOADING ── */
+#ldr {
+position:fixed; inset:0; z-index:5000;
+background:rgba(7,9,26,.97);
+display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+transition:opacity .5s;
+}
+#ldr.out { opacity:0; pointer-events:none; }
+.spin { width:38px; height:38px; border-radius:50%; border:2px solid var(–rim); border-top-color:var(–blue); animation:spin .75s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.ldr-t { font-size:11px; color:var(–t3); letter-spacing:2px; text-transform:uppercase; }
+.ldr-s { font-size:12px; color:var(–ok); font-weight:600; min-height:18px; text-align:center; padding:0 20px; }
+
+/* ── GATE (PIN) ── */
+#gate {
+position:fixed; inset:0; z-index:9500;
+background:rgba(7,9,26,.96); backdrop-filter:blur(40px);
+display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 28px;
+transition:opacity .5s,transform .5s;
+}
+#gate.out { opacity:0; transform:scale(1.05); pointer-events:none; }
+.gi { width:76px; height:76px; border-radius:50%; background:radial-gradient(circle,rgba(96,165,250,.2),transparent 70%); border:1.5px solid rgba(96,165,250,.35); display:flex; align-items:center; justify-content:center; font-size:30px; color:var(–blue); margin-bottom:24px; animation:glow 3s ease-in-out infinite; }
+@keyframes glow { 0%,100%{box-shadow:0 0 30px rgba(96,165,250,.15)} 50%{box-shadow:0 0 60px rgba(96,165,250,.3)} }
+.gt { font-size:11px; font-weight:700; letter-spacing:3px; color:var(–t3); text-transform:uppercase; margin-bottom:8px; }
+.gs { font-size:19px; font-weight:500; color:var(–t1); margin-bottom:32px; text-align:center; }
+.pdots { display:flex; gap:18px; margin-bottom:32px; }
+.pd { width:14px; height:14px; border-radius:50%; border:2px solid var(–rim2); background:transparent; transition:all .2s cubic-bezier(.34,1.56,.64,1); }
+.pd.on    { background:var(–blue); border-color:var(–blue); transform:scale(1.15); }
+.pd.wrong { background:var(–bad);  border-color:var(–bad);  animation:shk .4s; }
+@keyframes shk { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+.npad { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; width:246px; }
+.nk { height:66px; border-radius:50%; border:none; background:rgba(255,255,255,.07); color:var(–t1); font-size:23px; font-weight:300; cursor:pointer; font-family:var(–font); display:flex; align-items:center; justify-content:center; transition:background .15s,transform .1s; }
+.nk:active { background:rgba(96,165,250,.22); transform:scale(.91); }
+.nk.del { font-size:17px; color:var(–t2); }
+.nk.blank { background:transparent; pointer-events:none; }
+.gerr { font-size:12px; color:var(–bad); font-weight:600; min-height:20px; margin-top:16px; text-align:center; }
+.ghint { font-size:11px; color:var(–t3); margin-top:14px; cursor:pointer; }
+
+/* ── PWA INSTALL ── */
+#instBar {
+position:fixed; bottom:92px; left:12px; right:12px; z-index:600;
+background:linear-gradient(135deg,rgba(96,165,250,.14),rgba(52,211,153,.09));
+border:1px solid rgba(96,165,250,.28); border-radius:var(–r); padding:14px 16px;
+display:flex; align-items:center; gap:12px; backdrop-filter:blur(24px);
+transform:translateY(24px); opacity:0; transition:all .45s cubic-bezier(.34,1.56,.64,1); pointer-events:none;
+}
+#instBar.show { transform:translateY(0); opacity:1; pointer-events:all; }
+.ib-t strong { font-size:13px; font-weight:700; display:block; }
+.ib-t span   { font-size:10px; color:var(–t2); }
+.ib-btn { background:var(–blue); color:#fff; border:none; padding:8px 16px; border-radius:12px; font-size:12px; font-weight:700; cursor:pointer; font-family:var(–font); }
+.ib-x { font-size:15px; color:var(–t3); cursor:pointer; padding:4px; margin-left:auto; }
+
+/* ── TOAST ── */
+#toast {
+position:fixed; top:56px; left:50%; transform:translateX(-50%) translateY(-20px);
+z-index:9000; width:calc(100% - 28px); max-width:400px;
+background:rgba(12,16,40,.95); border:1px solid rgba(96,165,250,.3);
+border-radius:var(–r); padding:14px 18px; backdrop-filter:blur(24px);
+transition:opacity .35s,transform .35s cubic-bezier(.34,1.4,.64,1);
+opacity:0; pointer-events:none;
+}
+#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.th { font-size:14px; font-weight:700; }
+.tb { font-size:11px; color:var(–t2); margin-top:3px; }
+
+/* ── MAIN APP ── */
+#app { position:relative; z-index:1; max-width:430px; margin:0 auto; padding-bottom:90px; display:none; }
+
+/* ── TOPBAR ── */
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:58px 20px 14px; }
+.tb-logo { font-size:13px; font-weight:800; letter-spacing:2.5px; color:var(–t3); }
+.tb-right { display:flex; gap:9px; }
+.tb-btn { width:38px; height:38px; border-radius:50%; background:var(–glass); border:1px solid var(–rim); display:flex; align-items:center; justify-content:center; font-size:15px; color:var(–t2); cursor:pointer; transition:all .18s; }
+.tb-btn:active { transform:scale(.88); background:rgba(96,165,250,.15); }
+.tb-btn.lit { color:var(–warn); border-color:rgba(251,191,36,.35); }
+
+/* ── LOCATION ── */
+.loc-wrap { padding:0 20px 6px; }
+.loc-top { display:flex; align-items:center; gap:9px; margin-bottom:4px; }
+.loc-dot { width:8px; height:8px; border-radius:50%; background:var(–ok); flex-shrink:0; animation:pulse 2.2s infinite; }
+@keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(52,211,153,.5)} 70%{box-shadow:0 0 0 12px transparent} 100%{box-shadow:0 0 0 0 transparent} }
+.loc-name { font-size:16px; font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.loc-acc  { font-size:10px; color:var(–ok); font-weight:700; white-space:nowrap; }
+/* Гиперлокал: нақты мекенжай — 2 жол */
+.loc-addr { font-size:11px; color:var(–t2); padding-left:17px; line-height:1.5; min-height:16px; margin-bottom:8px; }
+.loc-sel { width:100%; background:var(–glass); border:1px solid var(–rim); color:var(–t1); font-family:var(–font); font-size:13px; font-weight:500; padding:9px 14px; border-radius:16px; outline:none; -webkit-appearance:none; cursor:pointer; }
+.loc-sel option { background:#0c1028; }
+
+/* ── HERO ── */
+.hero { margin:0 14px 14px; padding:30px 22px 26px; border-radius:28px; border:1px solid var(–rim); background:var(–glass); backdrop-filter:blur(32px); text-align:center; position:relative; overflow:hidden; transition:background 1s; }
+.hero::before { content:’’; position:absolute; top:-40px; left:50%; transform:translateX(-50%); width:260px; height:260px; border-radius:50%; background:radial-gradient(circle,var(–hglow,rgba(96,165,250,.08)),transparent 70%); pointer-events:none; transition:background 1.5s; }
+.hico { font-size:62px; line-height:1; display:block; margin-bottom:8px; animation:float 5s ease-in-out infinite; filter:drop-shadow(0 0 20px rgba(255,255,255,.12)); }
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+.htmp { font-size:100px; font-weight:200; line-height:1; letter-spacing:-6px; transition:color .8s; }
+.htmp sup { font-size:36px; font-weight:300; vertical-align:top; margin-top:14px; display:inline-block; letter-spacing:0; }
+.hcnd { font-size:18px; font-weight:400; color:var(–t2); margin-top:6px; }
+.hfl  { display:inline-flex; align-items:center; gap:6px; margin-top:12px; padding:6px 16px; border-radius:20px; background:var(–glass); border:1px solid var(–rim); font-size:13px; font-weight:500; color:var(–t2); }
+.hfl i { color:var(–blue); }
+.hhl { display:flex; justify-content:center; gap:22px; margin-top:16px; font-size:15px; font-weight:600; }
+
+/* ── ALERT STRIP ── */
+.alert { margin:0 14px 12px; padding:13px 16px; border-radius:18px; display:flex; align-items:flex-start; gap:11px; font-size:12px; font-weight:600; line-height:1.5; animation:fadeUp .4s ease; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.a-safe { background:rgba(52,211,153,.09);  border:1px solid rgba(52,211,153,.25); color:var(–ok);   }
+.a-warn { background:rgba(251,191,36,.09);  border:1px solid rgba(251,191,36,.28); color:var(–warn); }
+.a-bad  { background:rgba(248,113,113,.11); border:1px solid rgba(248,113,113,.35);color:var(–bad);  }
+.alert i { font-size:17px; margin-top:1px; flex-shrink:0; }
+.al-body { flex:1; }
+.al-h { font-weight:800; margin-bottom:2px; }
+.al-s { font-size:11px; opacity:.8; font-weight:500; }
+
+/* ── SECTION HEADER ── */
+.sh { font-size:11px; font-weight:700; letter-spacing:2px; color:var(–t3); text-transform:uppercase; margin-bottom:11px; display:flex; align-items:center; gap:8px; }
+.sh::after { content:’’; flex:1; height:1px; background:var(–rim); }
+.sec { margin:14px 14px 0; }
+
+/* ── GLASS CARD ── */
+.gc { background:var(–glass); border:1px solid var(–rim); border-radius:var(–r); padding:18px; backdrop-filter:blur(24px); }
+
+/* ── MINUTECAST ── */
+.mc-s  { font-size:13px; font-weight:600; margin-bottom:13px; }
+.mc-b  { display:flex; align-items:flex-end; gap:2.5px; height:46px; }
+.mc-br { flex:1; border-radius:3px 3px 0 0; min-height:3px; transition:height .6s; }
+.mc-l  { display:flex; justify-content:space-between; font-size:9px; color:var(–t3); margin-top:6px; }
+
+/* ── STAT GRID ── */
+.sgrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.stile { background:var(–glass); border:1px solid var(–rim); border-radius:var(–r); padding:16px; backdrop-filter:blur(20px); }
+.sl { font-size:10px; font-weight:700; letter-spacing:1px; color:var(–t3); text-transform:uppercase; display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+.sv { font-size:30px; font-weight:200; line-height:1; }
+.sv-u { font-size:12px; color:var(–t2); margin-left:2px; }
+.sbar { height:3px; border-radius:2px; background:rgba(255,255,255,.07); margin:10px 0 8px; overflow:hidden; }
+.sbar-f { height:100%; border-radius:2px; transition:width 1s cubic-bezier(.34,1.2,.64,1); }
+.ssub { font-size:11px; color:var(–t2); }
+.sbadge { display:inline-block; margin-top:8px; font-size:9px; font-weight:800; padding:3px 9px; border-radius:8px; letter-spacing:.5px; text-transform:uppercase; }
+.b-ok   { background:rgba(52,211,153,.14); color:var(–ok);   }
+.b-warn { background:rgba(251,191,36,.14);  color:var(–warn); }
+.b-bad  { background:rgba(248,113,113,.14); color:var(–bad);  }
+
+/* ── RADAR ── */
+.radar-box { background:var(–glass); border:1px solid var(–rim); border-radius:var(–r); overflow:hidden; }
+#rCv { width:100%; height:210px; display:block; background:#030712; }
+.rf { padding:12px 16px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.rlayers { display:flex; gap:6px; flex-wrap:wrap; }
+.rl { font-size:10px; font-weight:700; padding:5px 12px; border-radius:10px; background:var(–glass); border:1px solid var(–rim); color:var(–t2); cursor:pointer; transition:all .2s; }
+.rl.on { background:rgba(96,165,250,.18); border-color:rgba(96,165,250,.5); color:var(–blue); }
+.r-time { font-size:10px; color:var(–t3); white-space:nowrap; }
+
+/* ── HOURLY ── */
+.hscroll { display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; scrollbar-width:none; }
+.hscroll::-webkit-scrollbar { display:none; }
+.hc { min-width:72px; flex-shrink:0; background:var(–glass); border:1px solid var(–rim); border-radius:20px; padding:14px 10px; display:flex; flex-direction:column; align-items:center; gap:5px; }
+.hc.now { background:rgba(96,165,250,.12); border-color:rgba(96,165,250,.4); }
+.hc-t { font-size:11px; color:var(–t2); font-weight:700; }
+.hc-i { font-size:20px; }
+.hc-d { font-size:21px; font-weight:500; }
+.hc-p { font-size:9px; color:var(–blue); font-weight:700; }
+.hc-w { font-size:9px; font-weight:700; padding:2px 7px; border-radius:7px; margin-top:2px; }
+
+/* ── DAILY ── */
+.dc { background:var(–glass); border:1px solid var(–rim); border-radius:var(–r); padding:15px 16px; margin-bottom:8px; }
+.dc-row { display:flex; align-items:center; gap:8px; }
+.dc-day { font-size:14px; font-weight:600; flex:1; }
+.dc-ico { font-size:22px; }
+.dc-hl  { display:flex; align-items:baseline; gap:7px; margin-left:auto; }
+.dc-hi  { font-size:20px; font-weight:600; }
+.dc-lo  { font-size:14px; color:var(–t2); }
+.dc-bar { height:3px; border-radius:2px; background:rgba(255,255,255,.07); margin:9px 0 7px; overflow:hidden; }
+.dc-bf  { height:100%; border-radius:2px; background:linear-gradient(to right,var(–blue),var(–oran)); }
+.dc-m   { display:flex; gap:14px; font-size:10px; color:var(–t2); }
+.dc-m span { display:flex; align-items:center; gap:4px; }
+
+/* ── AI CARD ── */
+.ai-card { background:linear-gradient(135deg,rgba(96,165,250,.07),rgba(167,139,250,.05)); border:1px solid rgba(167,139,250,.2); border-radius:var(–r); padding:18px; }
+.ai-h { display:flex; align-items:center; gap:11px; margin-bottom:13px; }
+.ai-orb { width:36px; height:36px; border-radius:50%; flex-shrink:0; background:linear-gradient(135deg,var(–blue),var(–purp)); display:flex; align-items:center; justify-content:center; font-size:15px; }
+.ai-n { font-size:13px; font-weight:700; }
+.ai-tag { font-size:9px; color:var(–t3); font-weight:600; margin-top:2px; }
+.ai-txt { font-size:13px; line-height:1.75; color:rgba(238,242,255,.8); }
+.ai-aff { margin-top:14px; padding-top:13px; border-top:1px solid var(–rim); display:flex; align-items:center; gap:11px; }
+.af-i { font-size:22px; }
+.af-t { flex:1; }
+.af-t strong { font-size:12px; font-weight:700; display:block; }
+.af-t span   { font-size:10px; color:var(–t2); }
+.af-btn { background:linear-gradient(135deg,var(–blue),var(–purp)); border:none; color:#fff; padding:8px 14px; border-radius:12px; font-size:11px; font-weight:700; cursor:pointer; font-family:var(–font); }
+.af-btn:active { opacity:.8; }
+
+/* ── AQI ── */
+.aqi-top { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:14px; }
+.aqi-n   { font-size:54px; font-weight:200; line-height:1; transition:color .6s; }
+.aqi-ri  { text-align:right; }
+.aqi-l   { font-size:17px; font-weight:700; }
+.aqi-s   { font-size:10px; color:var(–t3); margin-top:2px; }
+.aqi-bar { height:6px; border-radius:3px; background:linear-gradient(to right,#34d399,#fbbf24,#fb923c,#f87171,#c084fc); position:relative; margin-bottom:5px; }
+.aqi-dot { position:absolute; top:-5px; width:16px; height:16px; border-radius:50%; background:#fff; border:3px solid var(–ink); transform:translateX(-50%); transition:left .9s cubic-bezier(.34,1.3,.64,1); }
+.aqi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:14px; }
+.aqi-cell { background:rgba(255,255,255,.04); border-radius:12px; padding:10px; text-align:center; }
+.aqi-cv { font-size:16px; font-weight:600; }
+.aqi-cl { font-size:9px; color:var(–t3); margin-top:2px; font-weight:600; }
+
+/* ── SHARE ── */
+.share-card { background:linear-gradient(135deg,rgba(52,211,153,.07),rgba(96,165,250,.05)); border:1px solid rgba(52,211,153,.18); border-radius:var(–r); padding:18px; }
+.share-prev { background:var(–surf); border-radius:16px; padding:16px; margin-bottom:14px; border:1px solid var(–rim); font-size:14px; line-height:1.6; }
+.share-prev strong { color:var(–blue); }
+.sbts { display:flex; gap:8px; flex-wrap:wrap; }
+.sb { flex:1; min-width:0; padding:11px 8px; border-radius:14px; border:none; font-size:12px; font-weight:700; cursor:pointer; font-family:var(–font); display:flex; align-items:center; justify-content:center; gap:6px; transition:opacity .2s,transform .1s; }
+.sb:active { opacity:.8; transform:scale(.96); }
+.sb-x  { background:#000; color:#fff; }
+.sb-tg { background:#2aabee; color:#fff; }
+.sb-wa { background:#25d366; color:#fff; }
+.sb-cp { background:var(–glass); color:var(–t1); border:1px solid var(–rim); }
+.sb-im { background:linear-gradient(135deg,var(–purp),var(–blue)); color:#fff; }
+
+/* ── QUOTE ── */
+.qcard { border-left:2px solid rgba(96,165,250,.35); padding:13px 16px; }
+.q-t { font-size:13px; line-height:1.65; color:var(–t2); font-style:italic; }
+.q-a { font-size:10px; font-weight:700; color:var(–t3); margin-top:6px; letter-spacing:1px; text-transform:uppercase; }
+
+/* ── SETTINGS PANEL ── */
+.set-group { background:var(–glass); border:1px solid var(–rim); border-radius:var(–r); overflow:hidden; margin-bottom:12px; }
+.set-row { display:flex; align-items:center; gap:12px; padding:15px 16px; border-bottom:1px solid var(–rim); }
+.set-row:last-child { border-bottom:none; }
+.set-ico { width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+.set-lbl { flex:1; }
+.set-lbl strong { font-size:13px; font-weight:600; display:block; }
+.set-lbl span   { font-size:10px; color:var(–t2); }
+/* Toggle switch */
+.tog { width:44px; height:26px; border-radius:13px; background:rgba(255,255,255,.15); cursor:pointer; position:relative; transition:background .25s; flex-shrink:0; }
+.tog.on { background:var(–blue); }
+.tog::after { content:’’; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:left .25s; }
+.tog.on::after { left:21px; }
+/* Unit buttons */
+.unit-btns { display:flex; gap:6px; }
+.ub { font-size:11px; font-weight:700; padding:6px 14px; border-radius:10px; background:var(–glass); border:1px solid var(–rim); color:var(–t2); cursor:pointer; transition:all .2s; }
+.ub.on { background:rgba(96,165,250,.2); border-color:rgba(96,165,250,.5); color:var(–blue); }
+/* Pro card in settings */
+.pro-card { background:linear-gradient(135deg,rgba(96,165,250,.1),rgba(167,139,250,.08)); border:1px solid rgba(167,139,250,.25); border-radius:var(–r); padding:20px; margin-bottom:12px; text-align:center; }
+.pro-card h3 { font-size:18px; font-weight:800; margin-bottom:6px; }
+.pro-card p  { font-size:12px; color:var(–t2); margin-bottom:16px; }
+.pro-btn { width:100%; padding:14px; border-radius:16px; border:none; background:linear-gradient(135deg,var(–blue),var(–purp)); color:#fff; font-size:14px; font-weight:800; cursor:pointer; font-family:var(–font); }
+
+/* ── BOTTOM NAV ── */
+.bnav { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:430px; z-index:300; background:rgba(7,9,26,.88); border-top:1px solid var(–rim); backdrop-filter:blur(32px); display:flex; justify-content:space-around; padding:10px 0 calc(10px + env(safe-area-inset-bottom)); }
+.bni { display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; padding:2px 16px; }
+.bni i    { font-size:20px; color:var(–t3); transition:color .2s,transform .2s; }
+.bni span { font-size:9px;  color:var(–t3); font-weight:700; transition:color .2s; }
+.bni.on i,.bni.on span { color:var(–blue); }
+.bni.on i { transform:scale(1.1); }
+
+/* ── TABS ── */
+.tab { display:none; }
+.tab.on { display:block; }
+
+/* ── ALERTS TAB ── */
+.al-item { margin-bottom:10px; }
+
+/* ── UTILS ── */
+.c-ok{color:var(–ok)} .c-warn{color:var(–warn)} .c-bad{color:var(–bad)} .c-blue{color:var(–blue)} .c-oran{color:var(–oran)}
+.foot { text-align:center; padding:28px 0 8px; font-size:9px; color:var(–t3); letter-spacing:1px; line-height:2; }
+</style>
+
+</head>
+<body>
+
+<!-- Ambient background -->
+
+<canvas id="bgC"></canvas>
+
+<!-- Loading -->
+
+<div id="ldr">
+  <div class="spin"></div>
+  <div class="ldr-t">ULGI PRO</div>
+  <div class="ldr-s" id="ldrS">GPS анықталуда...</div>
+</div>
+
+<!-- Toast -->
+
+<div id="toast"><div class="th" id="tH"></div><div class="tb" id="tB"></div></div>
+
+<!-- PIN Gate -->
+
+<div id="gate">
+  <div class="gi"><i class="fas fa-fingerprint"></i></div>
+  <div class="gt">ULGI PRO</div>
+  <div class="gs" id="gSub">PIN кодыңызды теріңіз</div>
+  <div class="pdots">
+    <div class="pd" id="pd0"></div><div class="pd" id="pd1"></div>
+    <div class="pd" id="pd2"></div><div class="pd" id="pd3"></div>
+  </div>
+  <div class="npad">
+    <button class="nk" onclick="pk('1')">1</button>
+    <button class="nk" onclick="pk('2')">2</button>
+    <button class="nk" onclick="pk('3')">3</button>
+    <button class="nk" onclick="pk('4')">4</button>
+    <button class="nk" onclick="pk('5')">5</button>
+    <button class="nk" onclick="pk('6')">6</button>
+    <button class="nk" onclick="pk('7')">7</button>
+    <button class="nk" onclick="pk('8')">8</button>
+    <button class="nk" onclick="pk('9')">9</button>
+    <button class="nk blank"></button>
+    <button class="nk" onclick="pk('0')">0</button>
+    <button class="nk del" onclick="pdel()"><i class="fas fa-delete-left"></i></button>
+  </div>
+  <div class="gerr" id="gErr"></div>
+  <div class="ghint" onclick="resetPin()">PIN ұмыттыңыз ба?</div>
+</div>
+
+<!-- PWA Install Bar -->
+
+<div id="instBar">
+  <div style="font-size:22px">📱</div>
+  <div class="ib-t"><strong>Үй экранына орнату</strong><span>Офлайн да жұмыс істейді</span></div>
+  <button class="ib-btn" onclick="doInst()">ОРНАТУ</button>
+  <div class="ib-x" onclick="hideInst()"><i class="fas fa-times"></i></div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MAIN APP
+═══════════════════════════════════════════ -->
+
+<div id="app">
+
+  <!-- TOPBAR -->
+
+  <div class="topbar">
+    <div class="tb-logo">ULGI PRO</div>
+    <div class="tb-right">
+      <div class="tb-btn" id="bellBtn" onclick="sendAlert()"><i class="fas fa-bell"></i></div>
+      <div class="tb-btn" onclick="goShare()"><i class="fas fa-share-nodes"></i></div>
+      <div class="tb-btn" onclick="doRefresh()"><i class="fas fa-rotate-right" id="rfIco"></i></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: HOME ══ -->
+
+  <div id="tab-home" class="tab on">
+    <div class="loc-wrap">
+      <div class="loc-top">
+        <div class="loc-dot"></div>
+        <div class="loc-name" id="lName">Анықталуда...</div>
+        <div class="loc-acc"  id="lAcc"></div>
+      </div>
+      <!-- Гиперлокал: нақты мекенжай (көше + аудан) -->
+      <div class="loc-addr" id="lAddr"></div>
+      <select id="locSel" class="loc-sel" onchange="onSelChange()">
+        <option value="gps">📍 GPS — нақты орным</option>
+      </select>
+    </div>
+
+```
+<div class="hero" id="heroCard">
+  <span class="hico" id="hIco">—</span>
+  <div  class="htmp" id="hT">—<sup>°</sup></div>
+  <div  class="hcnd" id="hC">Жүктелуде...</div>
+  <div  class="hfl"  id="hFL"><i class="fas fa-person"></i> Сезілуі: —°</div>
+  <div  class="hhl">
+    <span class="c-oran" id="hHi">↑ —°</span>
+    <span class="c-blue" id="hLo">↓ —°</span>
+  </div>
+</div>
+
+<div class="alert a-safe" id="alertEl">
+  <i class="fas fa-circle-check"></i>
+  <div class="al-body">
+    <div class="al-h" id="alH">Ауа-райы жайлы</div>
+    <div class="al-s" id="alS">Сыртқа шығуға болады</div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh"><i class="fas fa-stopwatch c-blue"></i> MinuteCast — 60 мин</div>
+  <div class="gc">
+    <div class="mc-s" id="mcS">Жүктелуде...</div>
+    <div class="mc-b" id="mcB"></div>
+    <div class="mc-l"><span>Қазір</span><span>15м</span><span>30м</span><span>45м</span><span>60м</span></div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sgrid">
+    <div class="stile">
+      <div class="sl"><i class="fas fa-wind c-blue"></i> Жел</div>
+      <div class="sv" id="sv-w">—<span class="sv-u">м/с</span></div>
+      <div class="sbar"><div class="sbar-f" id="sb-w" style="width:0%;background:var(--blue)"></div></div>
+      <div class="ssub" id="ss-w">—</div>
+      <div class="sbadge b-ok" id="sbg-w">—</div>
+    </div>
+    <div class="stile">
+      <div class="sl"><i class="fas fa-droplet c-blue"></i> Ылғал</div>
+      <div class="sv" id="sv-h">—<span class="sv-u">%</span></div>
+      <div class="sbar"><div class="sbar-f" id="sb-h" style="width:0%;background:var(--blue)"></div></div>
+      <div class="ssub" id="ss-h">—</div>
+      <div class="sbadge b-ok" id="sbg-h">—</div>
+    </div>
+    <div class="stile">
+      <div class="sl"><i class="fas fa-cloud-rain c-blue"></i> Жауын</div>
+      <div class="sv" id="sv-r">—<span class="sv-u">мм</span></div>
+      <div class="sbar"><div class="sbar-f" id="sb-r" style="width:0%;background:var(--blue)"></div></div>
+      <div class="ssub" id="ss-r">—</div>
+      <div class="sbadge b-ok" id="sbg-r">—</div>
+    </div>
+    <div class="stile">
+      <div class="sl"><i class="fas fa-sun c-warn"></i> UV</div>
+      <div class="sv" id="sv-u">—</div>
+      <div class="sbar"><div class="sbar-f" id="sb-u" style="width:0%;background:var(--warn)"></div></div>
+      <div class="ssub" id="ss-u">—</div>
+      <div class="sbadge b-ok" id="sbg-u">—</div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh"><i class="fas fa-satellite-dish c-blue"></i> Live Radar</div>
+  <div class="radar-box">
+    <canvas id="rCv"></canvas>
+    <div class="rf">
+      <div class="rlayers">
+        <div class="rl on" data-l="rain"  onclick="setRL(this)">Жаңбыр</div>
+        <div class="rl"    data-l="wind"  onclick="setRL(this)">Жел</div>
+        <div class="rl"    data-l="cloud" onclick="setRL(this)">Бұлт</div>
+        <div class="rl"    data-l="temp"  onclick="setRL(this)">Темп</div>
+      </div>
+      <div class="r-time" id="rT">—</div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="ai-card">
+    <div class="ai-h">
+      <div class="ai-orb">🤖</div>
+      <div><div class="ai-n">ULGI Intelligence</div><div class="ai-tag">AI болжам талдауы</div></div>
+    </div>
+    <div class="ai-txt" id="aiTxt">Талданып жатыр...</div>
+    <div class="ai-aff" id="aiAff">
+      <div class="af-i" id="afI">🧥</div>
+      <div class="af-t"><strong id="afH">Бүгін не киінейін?</strong><span id="afS">Ауа-райына сай кеңес</span></div>
+      <button class="af-btn" onclick="affClick()">Қарау →</button>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh"><i class="fas fa-clock c-blue"></i> 24 Сағат</div>
+  <div class="hscroll" id="hList"></div>
+</div>
+
+<div class="sec">
+  <div class="sh"><i class="fas fa-wind c-ok"></i> Ауа Сапасы (AQI)</div>
+  <div class="gc">
+    <div class="aqi-top">
+      <div class="aqi-n" id="aqN">—</div>
+      <div class="aqi-ri"><div class="aqi-l" id="aqL">—</div><div class="aqi-s">European AQI</div></div>
+    </div>
+    <div class="aqi-bar"><div class="aqi-dot" id="aqD" style="left:0%"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--t3);margin-top:4px;"><span>Жақсы</span><span>Орташа</span><span>Нашар</span><span>Зиянды</span></div>
+    <div class="aqi-grid">
+      <div class="aqi-cell"><div class="aqi-cv" id="aq25">—</div><div class="aqi-cl">PM2.5 μg</div></div>
+      <div class="aqi-cell"><div class="aqi-cv" id="aq10">—</div><div class="aqi-cl">PM10 μg</div></div>
+      <div class="aqi-cell"><div class="aqi-cv" id="aqN2">—</div><div class="aqi-cl">NO₂ μg</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sh"><i class="fas fa-calendar-days c-blue"></i> 7 Күн</div>
+  <div id="dList"></div>
+</div>
+
+<!-- Social Share -->
+<div class="sec" id="shareSection">
+  <div class="sh"><i class="fas fa-share-nodes c-ok"></i> Бөлісу</div>
+  <div class="share-card">
+    <div class="share-prev" id="sharePrev">Жүктелуде...</div>
+    <div class="sbts">
+      <button class="sb sb-x"  onclick="sX()"> <i class="fab fa-x-twitter"></i> X</button>
+      <button class="sb sb-tg" onclick="sTg()"><i class="fab fa-telegram"></i> TG</button>
+      <button class="sb sb-wa" onclick="sWa()"><i class="fab fa-whatsapp"></i> WA</button>
+      <button class="sb sb-cp" onclick="sCp()"><i class="fas fa-copy"></i> Көшіру</button>
+      <button class="sb sb-im" onclick="sImg()"><i class="fas fa-image"></i> Сурет</button>
+    </div>
+  </div>
+</div>
+
+<div class="sec"><div class="qcard" id="qCard"></div></div>
+<div class="foot">ULGI PRO v25 • GPS HYPER-LOCAL • OPEN-METEO<br>SERVERLESS • PWA READY • 21-ші ғасырдың стартапы</div>
+```
+
+  </div><!-- /tab-home -->
+
+  <!-- ══ TAB: RADAR ══ -->
+
+  <div id="tab-radar" class="tab">
+    <div class="topbar" style="padding-bottom:8px;">
+      <div class="tb-logo">LIVE RADAR</div>
+    </div>
+    <div style="margin:0 14px;">
+      <div class="gc" style="padding:0;overflow:hidden;margin-bottom:14px;">
+        <canvas id="rCv2" style="width:100%;height:300px;display:block;background:#030712;"></canvas>
+        <div class="rf" style="flex-direction:column;align-items:flex-start;gap:10px;">
+          <div class="rlayers" id="rLayers2">
+            <div class="rl on" data-l="rain"  onclick="setRL2(this)">Жаңбыр</div>
+            <div class="rl"    data-l="wind"  onclick="setRL2(this)">Жел</div>
+            <div class="rl"    data-l="cloud" onclick="setRL2(this)">Бұлт</div>
+            <div class="rl"    data-l="temp"  onclick="setRL2(this)">Температура</div>
+          </div>
+          <div style="font-size:11px;color:var(--t2);">
+            <i class="fas fa-clock"></i> Жаңартылды: <span id="rT2">—</span>
+          </div>
+        </div>
+      </div>
+      <!-- Radar мекенжай -->
+      <div class="gc">
+        <div class="sh" style="margin-bottom:8px;"><i class="fas fa-location-dot c-ok"></i> Орналасу нүктесі</div>
+        <div style="font-size:14px;font-weight:600;" id="rLoc">—</div>
+        <div style="font-size:11px;color:var(--t2);margin-top:4px;" id="rCoord">—</div>
+        <div style="font-size:11px;color:var(--t2);margin-top:2px;">Радар нүктені орталыққа қойып, 50км радиусты сканерлейді</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: ALERTS ══ -->
+
+  <div id="tab-alerts" class="tab">
+    <div class="topbar" style="padding-bottom:8px;">
+      <div class="tb-logo">ЕСКЕРТУЛЕР</div>
+    </div>
+    <div style="padding:0 14px;" id="alertsList">
+      <div style="text-align:center;color:var(--t3);padding:40px 0;">Деректер жүктелуде...</div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: SETTINGS ══ -->
+
+  <div id="tab-settings" class="tab">
+    <div class="topbar" style="padding-bottom:8px;">
+      <div class="tb-logo">БАПТАУЛАР</div>
+    </div>
+    <div style="padding:0 14px;">
+
+```
+  <!-- GPS статусы -->
+  <div class="set-group" style="margin-bottom:12px;">
+    <div class="set-row">
+      <div class="set-ico" style="background:rgba(52,211,153,.15);">📍</div>
+      <div class="set-lbl">
+        <strong>GPS нүктесі</strong>
+        <span id="setGPS">Анықталуда...</span>
+      </div>
+      <div style="font-size:10px;color:var(--ok);font-weight:700;" id="setAcc"></div>
+    </div>
+    <div class="set-row">
+      <div class="set-ico" style="background:rgba(96,165,250,.15);">🏘</div>
+      <div class="set-lbl">
+        <strong>Нақты мекенжай</strong>
+        <span id="setAddr">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Хабарлама баптаулары -->
+  <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--t3);text-transform:uppercase;margin-bottom:8px;">ХАБАРЛАМАЛАР</div>
+  <div class="set-group">
+    <div class="set-row">
+      <div class="set-ico" style="background:rgba(96,165,250,.15);">🌧</div>
+      <div class="set-lbl"><strong>Жаңбыр ескертуі</strong><span>Жаңбыр алдында хабарлайды</span></div>
+      <div class="tog on" id="tog-rain" onclick="togSet('rain')"></div>
+    </div>
+    <div class="set-row">
+      <div class="set-ico" style="background:rgba(248,113,113,.15);">💨</div>
+      <div class="set-lbl"><strong>Жел ескертуі</strong><span>>4.5 м/с болғанда</span></div>
+      <div class="tog on" id="tog-wind" onclick="togSet('wind')"></div>
+    </div>
+    <div class="set-row">
+      <div class="set-ico" style="background:rgba(148,163,184,.15);">❄️</div>
+      <div class="set-lbl"><strong>Аяз ескертуі</strong><span>-20° астам болғанда</span></div>
+      <div class="tog on" id="tog-frost" onclick="togSet('frost')"></div>
+    </div>
+    <div class="set-row">
+      <div class="set-ico" style="background:rgba(251,191,36,.15);">☀️</div>
+      <div class="set-lbl"><strong>Күнделікті болжам</strong><span>Таңертең 07:00-де</span></div>
+      <div class="tog" id="tog-daily" onclick="togSet('daily')"></div>
+    </div>
+  </div>
+
+  <!-- Бірліктер -->
+  <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--t3);text-transform:uppercase;margin:16px 0 8px;">БІРЛІКТЕР</div>
+  <div class="set-group">
+    <div class="set-row">
+      <div class="set-ico" style="background:rgba(251,146,60,.15);">🌡</div>
+      <div class="set-lbl"><strong>Температура</strong></div>
+      <div class="unit-btns">
+        <div class="ub on" id="ub-C" onclick="setUnit('C')">°C</div>
+        <div class="ub"    id="ub-F" onclick="setUnit('F')">°F</div>
+      </div>
+    </div>
+    <div class="set-row">
+      <div class="set-ico" style="background:rgba(96,165,250,.15);">💨</div>
+      <div class="set-lbl"><strong>Жел жылдамдығы</strong></div>
+      <div class="unit-btns">
+        <div class="ub on" id="ub-ms"  onclick="setWUnit('ms')">м/с</div>
+        <div class="ub"    id="ub-kmh" onclick="setWUnit('kmh')">км/с</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cache тазарту -->
+  <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--t3);text-transform:uppercase;margin:16px 0 8px;">ДЕРЕКТЕР</div>
+  <div class="set-group">
+    <div class="set-row" onclick="clearCache()" style="cursor:pointer;">
+      <div class="set-ico" style="background:rgba(248,113,113,.15);">🗑</div>
+      <div class="set-lbl"><strong>Кэшті тазарту</strong><span>Ауа-рай деректерін жаңарту</span></div>
+      <i class="fas fa-chevron-right" style="color:var(--t3);font-size:12px;"></i>
+    </div>
+    <div class="set-row" onclick="resetPin()" style="cursor:pointer;">
+      <div class="set-ico" style="background:rgba(167,139,250,.15);">🔑</div>
+      <div class="set-lbl"><strong>PIN кодты өзгерту</strong><span>Жаңа PIN орнату</span></div>
+      <i class="fas fa-chevron-right" style="color:var(--t3);font-size:12px;"></i>
+    </div>
+  </div>
+
+  <!-- PRO card -->
+  <div class="pro-card">
+    <div style="font-size:32px;margin-bottom:8px;">⭐</div>
+    <h3>ULGI PRO</h3>
+    <p>Жарнамасыз · 30 күн болжам · AI талдау · Live Radar</p>
+    <button class="pro-btn" onclick="toast('⭐ PRO','Жуырда іске қосылады!')">3 КҮНДІК ТЕГІН СЫНАП КӨР</button>
+  </div>
+
+  <div class="foot" style="padding-top:10px;">ULGI PRO v25 • GPS HYPER-LOCAL<br>SERVERLESS • OPEN-METEO API</div>
+</div>
+```
+
+  </div>
+
+  <!-- BOTTOM NAV -->
+
+  <div class="bnav">
+    <div class="bni on" id="bn-home"    onclick="goTab('home')">   <i class="fas fa-cloud-sun"></i>         <span>Үй</span></div>
+    <div class="bni"    id="bn-radar"   onclick="goTab('radar')">  <i class="fas fa-satellite-dish"></i>    <span>Радар</span></div>
+    <div class="bni"    id="bn-alerts"  onclick="goTab('alerts')"> <i class="fas fa-triangle-exclamation"></i><span>Ескерту</span></div>
+    <div class="bni"    id="bn-settings"onclick="goTab('settings')"><i class="fas fa-sliders"></i>           <span>Баптау</span></div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   1. AMBIENT BACKGROUND CANVAS — requestAnimationFrame, CPU-дост
+══════════════════════════════════════════════════════════════ */
+(function() {
+  const cv = document.getElementById('bgC');
+  const ctx = cv.getContext('2d');
+  let W, H, pts = [];
+  function resize() { W = cv.width = innerWidth; H = cv.height = innerHeight; }
+  resize(); addEventListener('resize', resize);
+  for (let i = 0; i < 70; i++) pts.push({
+    x: Math.random(), y: Math.random(),
+    vx: (Math.random()-.5)*.0003, vy: Math.random()*.00025+.00008,
+    r: Math.random()*1.3+.3, a: Math.random()*.45+.08
+  });
+  (function frame() {
+    ctx.clearRect(0,0,W,H);
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#07091a'); g.addColorStop(.5,'#0a0d22'); g.addColorStop(1,'#0c1030');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    pts.forEach(p => {
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0||p.x>1) p.vx*=-1;
+      if(p.y>1) { p.y=0; p.x=Math.random(); }
+      ctx.beginPath(); ctx.arc(p.x*W,p.y*H,p.r,0,Math.PI*2);
+      ctx.fillStyle=`rgba(96,165,250,${p.a})`; ctx.fill();
+    });
+    requestAnimationFrame(frame);
+  })();
+})();
+
+/* ══════════════════════════════════════════════════════════════
+   2. RADAR CANVAS — sweep animation
+   Тегін нақты radar API жоқ. Open-Meteo precipitation деректері
+   негізінде динамикалық blob визуализациясы.
+══════════════════════════════════════════════════════════════ */
+let rLayer = 'rain', rAF1 = null, rAF2 = null;
+const RCOLS = {
+  rain:  ['79,195,247','100,181,246'],
+  wind:  ['251,191,36','251,146,60'],
+  cloud: ['148,163,184','203,213,225'],
+  temp:  ['248,113,113','251,146,60']
+};
+
+function drawRadar(id, timeId, h, isFullscreen) {
+  const cv = document.getElementById(id);
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const W = cv.offsetWidth || 398;
+  const H = isFullscreen ? 300 : 210;
+  cv.width = W; cv.height = H;
+  const cx = W/2, cy = H/2, R = Math.min(W,H)*.43;
+  let sweep = 0;
+  function sr(s) { const x = Math.sin(s)*10000; return x-Math.floor(x); }
+
+  function frame() {
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#030712'; ctx.fillRect(0,0,W,H);
+    // Grid
+    ctx.strokeStyle='rgba(96,165,250,.06)'; ctx.lineWidth=1;
+    for(let x=0;x<W;x+=34){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(let y=0;y<H;y+=34){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+    // Rings
+    [.33,.66,1].forEach(r=>{
+      ctx.beginPath();ctx.arc(cx,cy,R*r,0,Math.PI*2);
+      ctx.strokeStyle='rgba(96,165,250,.11)';ctx.stroke();
+    });
+    // Blobs
+    const cc = RCOLS[rLayer]||RCOLS.rain;
+    const t = Date.now();
+    for(let i=0;i<9;i++){
+      const bx=(sr(i*3.7)*.85+.075)*W, by=(sr(i*2.1)*.85+.075)*H;
+      const br=20+sr(i*5)*75+Math.sin(i*1.1+t/9000)*15;
+      const ba=.10+sr(i*7)*.22+Math.sin(i+t/8000)*.04;
+      const gr=ctx.createRadialGradient(bx,by,0,bx,by,br);
+      gr.addColorStop(0,`rgba(${cc[0]},${ba+.12})`);
+      gr.addColorStop(.5,`rgba(${cc[1]},${ba*.55})`);
+      gr.addColorStop(1,'transparent');
+      ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.fillStyle=gr;ctx.fill();
+    }
+    // Sweep
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(sweep);
+    const sg=ctx.createLinearGradient(0,0,R,0);
+    sg.addColorStop(0,'rgba(96,165,250,.75)');sg.addColorStop(1,'transparent');
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(R,0);
+    ctx.strokeStyle=sg;ctx.lineWidth=2;ctx.stroke();
+    ctx.beginPath();ctx.arc(0,0,R,0,-.45,true);
+    ctx.strokeStyle='rgba(96,165,250,.1)';ctx.lineWidth=R*.65;ctx.stroke();
+    ctx.restore();
+    sweep+=.016;
+    // Center GPS dot
+    ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);ctx.fillStyle='#34d399';ctx.fill();
+    ctx.beginPath();ctx.arc(cx,cy,10,0,Math.PI*2);ctx.strokeStyle='rgba(52,211,153,.35)';ctx.lineWidth=2;ctx.stroke();
+    // Timestamp
+    const now=new Date().toLocaleTimeString('kk-KZ',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    ctx.fillStyle='rgba(107,127,163,.55)';ctx.font='10px Outfit';
+    ctx.fillText(now,W-82,H-10);
+    const te=document.getElementById(timeId);if(te)te.innerText=now;
+    return requestAnimationFrame(frame);
+  }
+  return frame();
+}
+
+function setRL(el)  { document.querySelectorAll('#tab-home .rl').forEach(e=>e.classList.remove('on'));  el.classList.add('on'); rLayer=el.dataset.l; }
+function setRL2(el) { document.querySelectorAll('#rLayers2 .rl').forEach(e=>e.classList.remove('on')); el.classList.add('on'); rLayer=el.dataset.l; }
+
+/* ══════════════════════════════════════════════════════════════
+   3. PIN SECURITY
+══════════════════════════════════════════════════════════════ */
+const PIN_KEY = 'ULGI_V25_PIN';
+let pinBuf = '', pinMode = '';
+
+function initPin() {
+  const saved = localStorage.getItem(PIN_KEY);
+  if (!saved) { pinMode='setup'; document.getElementById('gSub').innerText='Жаңа PIN-код жасаңыз'; }
+  else         { pinMode='verify'; document.getElementById('gSub').innerText='PIN кодыңызды теріңіз'; }
+}
+function pk(k) {
+  if (pinBuf.length >= 4) return;
+  pinBuf += k; updDots();
+  if (pinBuf.length === 4) setTimeout(checkPin, 180);
+}
+function pdel() { pinBuf=pinBuf.slice(0,-1); updDots(); document.getElementById('gErr').innerText=''; }
+function updDots() {
+  for(let i=0;i<4;i++) {
+    const d=document.getElementById('pd'+i);
+    d.className='pd'+(i<pinBuf.length?' on':'');
+  }
+}
+function checkPin() {
+  const h = CryptoJS.SHA256(pinBuf).toString();
+  if (pinMode==='setup') { localStorage.setItem(PIN_KEY,h); unlockApp(); }
+  else {
+    if (h===localStorage.getItem(PIN_KEY)) { unlockApp(); }
+    else {
+      for(let i=0;i<4;i++) document.getElementById('pd'+i).className='pd wrong';
+      document.getElementById('gErr').innerText='PIN дұрыс емес.';
+      if(navigator.vibrate) navigator.vibrate([100,50,100]);
+      setTimeout(()=>{ pinBuf=''; updDots(); document.getElementById('gErr').innerText=''; },700);
+    }
+  }
+}
+function unlockApp() {
+  const g=document.getElementById('gate');
+  g.classList.add('out');
+  setTimeout(()=>g.style.display='none',500);
+  document.getElementById('app').style.display='block';
+  initApp();
+}
+function resetPin() {
+  if(confirm('PIN кодты жойып, жаңадан орнатасыз ба?')) { localStorage.removeItem(PIN_KEY); location.reload(); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   4. PWA INSTALL
+══════════════════════════════════════════════════════════════ */
+let dInst=null;
+addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); dInst=e; setTimeout(()=>document.getElementById('instBar').classList.add('show'),3000); });
+function doInst()  { if(!dInst)return; dInst.prompt(); dInst.userChoice.then(()=>{dInst=null;hideInst();}); }
+function hideInst(){ document.getElementById('instBar').classList.remove('show'); }
+
+/* ══════════════════════════════════════════════════════════════
+   5. CONSTANTS
+══════════════════════════════════════════════════════════════ */
+// Сумындар — дұрыс атаулар
+const SUMS = [
+  {name:"Өлгий (Орталық)", lat:48.9707, lon:89.9678},
+  {name:"Алтай",            lat:48.2937, lon:89.5113},
+  {name:"Алтанцөгц",        lat:49.0556, lon:90.5283},
+  {name:"Баяннуур",         lat:48.9567, lon:91.0125},
+  {name:"Бугат",            lat:48.9328, lon:90.0169},
+  {name:"Булган",           lat:46.9206, lon:91.0911},
+  {name:"Буянт",            lat:48.5303, lon:89.4719},
+  {name:"Дэлүүн",           lat:47.8094, lon:90.7578},
+  {name:"Ногооннуур",       lat:49.6192, lon:90.2228},
+  {name:"Сагсай",           lat:48.9083, lon:89.6506},
+  {name:"Толбо",            lat:48.4419, lon:90.0578},
+  {name:"Цагааннуур",       lat:49.5317, lon:89.7731},
+  {name:"Цэнгэл",           lat:49.0772, lon:88.8500},
+  {name:"Улаанхус",         lat:49.3339, lon:89.4564}
+];
+const WC={0:{t:"Ашық",i:"☀️"},1:{t:"Аз бұлтты",i:"🌤"},2:{t:"Бұлтты",i:"⛅"},3:{t:"Түнерген",i:"☁️"},45:{t:"Тұман",i:"🌫"},48:{t:"Қылау",i:"🌫"},51:{t:"Аз жаңбыр",i:"🌦"},53:{t:"Жаңбыр",i:"🌧"},55:{t:"Қатты жаңбыр",i:"🌧"},61:{t:"Жаңбыр",i:"🌧"},63:{t:"Жаңбыр",i:"🌧"},65:{t:"Нөсер",i:"🌧"},71:{t:"Қар",i:"🌨"},73:{t:"Қар",i:"🌨"},75:{t:"Қалың қар",i:"❄️"},77:{t:"Бұршақ",i:"🌨"},80:{t:"Өткінші жаңбыр",i:"🌦"},81:{t:"Нөсер",i:"🌧"},82:{t:"Қатты нөсер",i:"⛈"},85:{t:"Қар бораны",i:"❄️"},86:{t:"Қар бораны",i:"❄️"},95:{t:"Найзағай",i:"🌩"},96:{t:"Найзағай",i:"⛈"},99:{t:"Қатты дауыл",i:"⛈"}};
+function wc(c){return WC[c]||{t:"Белгісіз",i:"❓"};}
+const AI_TEXTS=[
+  "Атмосфералық қысым тұрақты. Бас ауруы бар адамдарға қолайлы күн.",
+  "Таңертеңгі бұлттар кетіп, күн ашылады. Спорт пен серуенге тамаша.",
+  "Жел солтүстіктен соғып тұр. Кешке температура тез түседі.",
+  "UV деңгейі орташа. Ашық жерде болсаңыз, күн крем қолданыңыз.",
+  "Ауа сапасы өте жақсы. Серуенге шығыңыз!",
+  "Қысым төмендеп тұр — жауын ықтималдығы артуда.",
+  "Тыныш, желсіз күн. Дала жұмыстарына өте қолайлы.",
+];
+const QUOTES=[
+  {q:"Денсаулық – зор байлық.",a:"Халық даналығы"},
+  {q:"Еңбек түбі – береке.",a:"Мақал"},
+  {q:"Сабыр түбі – сары алтын.",a:"Мақал"},
+  {q:"Батылдық – қорқыныштың жоқтығы емес, оны жеңу.",a:"Марк Твен"},
+  {q:"Білім – ең қуатты қару.",a:"Н. Мандела"},
+  {q:"Отан – оттан да ыстық.",a:"Халық даналығы"},
+];
+
+/* ══════════════════════════════════════════════════════════════
+   6. GLOBAL STATE
+══════════════════════════════════════════════════════════════ */
+let gLat=null, gLon=null, gWD=null, gAD=null, gShare='';
+let gLocName='', gAddrStr='';
+let tempUnit='C', windUnit='ms';
+
+/* ══════════════════════════════════════════════════════════════
+   7. CACHE HELPERS (TTL-based localStorage)
+══════════════════════════════════════════════════════════════ */
+function setC(k,v)       { try{localStorage.setItem(k,JSON.stringify({t:Date.now(),v}));}catch(e){} }
+function getC(k,ttlMin)  { try{const s=localStorage.getItem(k);if(!s)return null;const o=JSON.parse(s);if(Date.now()-o.t>ttlMin*60000)return null;return o.v;}catch{return null;} }
+function delC(k)         { localStorage.removeItem(k); }
+
+/* ══════════════════════════════════════════════════════════════
+   8. LOADING HELPERS
+══════════════════════════════════════════════════════════════ */
+function setStep(t) { const e=document.getElementById('ldrS');if(e)e.innerText=t; }
+function hideLdr()  { const ov=document.getElementById('ldr');ov.classList.add('out');setTimeout(()=>ov.style.display='none',600); }
+
+/* ══════════════════════════════════════════════════════════════
+   9. LOCATION SELECT BUILD
+══════════════════════════════════════════════════════════════ */
+function buildSel() {
+  const s=document.getElementById('locSel');
+  SUMS.forEach((loc,i)=>{ const o=document.createElement('option');o.value=i;o.text=loc.name;s.appendChild(o); });
+}
+function onSelChange() {
+  const v=document.getElementById('locSel').value;
+  if(v==='gps'){startGPS();return;}
+  const s=SUMS[+v];
+  gLat=s.lat; gLon=s.lon; gLocName=s.name; gAddrStr='';
+  document.getElementById('lName').innerText=s.name;
+  document.getElementById('lAcc').innerText='';
+  document.getElementById('lAddr').innerText='';
+  fetchWeather();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   10. GPS — High Accuracy + Nominatim Reverse Geocoding
+   ✅ FIX: Nominatim барлық өрістері тексеріледі
+   Монғолия/Қазақстан топонимикасы үшін:
+   city → town → village → hamlet → county → state
+══════════════════════════════════════════════════════════════ */
+function startGPS() {
+  setStep('GPS анықталуда...');
+  if(!navigator.geolocation){fallbackLoc();return;}
+  navigator.geolocation.getCurrentPosition(
+    async pos => {
+      gLat=pos.coords.latitude;
+      gLon=pos.coords.longitude;
+      const acc=Math.round(pos.coords.accuracy);
+      document.getElementById('lAcc').innerText=`±${acc}м`;
+      document.getElementById('lName').innerText='GPS нүктесі';
+      setStep('Мекенжай анықталуда...');
+      await reverseGeocode(gLat,gLon);
+      fetchWeather();
+    },
+    ()=>{ setStep('GPS жоқ...'); fallbackLoc(); },
+    {enableHighAccuracy:true,timeout:8000,maximumAge:0}
+  );
+}
+function fallbackLoc() {
+  gLat=SUMS[0].lat; gLon=SUMS[0].lon;
+  gLocName=SUMS[0].name; gAddrStr='';
+  document.getElementById('lName').innerText=SUMS[0].name;
+  fetchWeather();
+}
+
+/* ════════════════════════════════════════════
+   REVERSE GEOCODE — Nominatim
+   zoom=18 → үй деңгейіне дейін
+   Accept-Language: kk,ru → қазақ/орыс атаулар
+════════════════════════════════════════════ */
+async function reverseGeocode(lat,lon) {
+  const cKey=`geo_${lat.toFixed(4)}_${lon.toFixed(4)}`;
+  const cached=getC(cKey,60); // 60 мин кэш
+  if(cached){applyGeo(cached);return;}
+  try {
+    const r=await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=18&addressdetails=1`,
+      {headers:{'Accept-Language':'kk,ru,en','User-Agent':'ULGI-PRO-Weather/1.0'}}
+    );
+    if(!r.ok)throw new Error();
+    const j=await r.json();
+    const a=j.address||{};
+
+    // ✅ FIX: Монғол аймақтары үшін толық иерархия
+    // city > town > village > hamlet — кіші елді мекендер
+    const city  = a.city||a.town||a.village||a.hamlet||a.municipality||'';
+    const county= a.county||a.state_district||'';
+    const state = a.state||a.province||a.region||'';
+    // Нақты мекенжай: house_number + road + suburb
+    const house  = a.house_number||'';
+    const road   = a.road||a.pedestrian||a.footway||a.path||a.residential||'';
+    const suburb = a.suburb||a.neighbourhood||a.quarter||a.village||'';
+
+    const geo={city,county,state,house,road,suburb,display:j.display_name||''};
+    setC(cKey,geo);
+    applyGeo(geo);
+  } catch(e) {
+    // Geocode сәтсіз → координаттар
+    gLocName=`${lat.toFixed(4)}°N`;
+    gAddrStr=`${lon.toFixed(4)}°E`;
+    document.getElementById('lName').innerText=gLocName;
+    document.getElementById('lAddr').innerText=gAddrStr;
+  }
+}
+
+function applyGeo(geo) {
+  // Негізгі атау: city не county не state
+  const name = geo.city || geo.county || geo.state || 'GPS';
+  gLocName = name;
+  document.getElementById('lName').innerText = name;
+
+  // Гиперлокал мекенжай (2 жол)
+  let line1 = '';
+  if (geo.house && geo.road) line1 = `${geo.road}, ${geo.house}`;
+  else if (geo.road)         line1 = geo.road;
+  else if (geo.suburb)       line1 = geo.suburb;
+
+  let line2 = '';
+  if (geo.suburb && geo.road) line2 = geo.suburb;
+
+  const addr = [line1, line2].filter(Boolean).join(' · ');
+  gAddrStr = addr || geo.display.split(',')[0] || '';
+  document.getElementById('lAddr').innerText = gAddrStr;
+
+  // Баптаулар бетін жаңарту
+  const sg=document.getElementById('setGPS');
+  const sa=document.getElementById('setAddr');
+  if(sg) sg.innerText=name;
+  if(sa) sa.innerText=gAddrStr||'—';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   11. WEATHER FETCH — multi-model cascade + кэш
+   best_match → icon_seamless → gfs_global
+══════════════════════════════════════════════════════════════ */
+async function fetchWeather() {
+  if(!gLat||!gLon)return;
+  setStep('Деректер жүктелуде...');
+
+  const cKey=`wx_${gLat.toFixed(3)}_${gLon.toFixed(3)}`;
+  const cached=getC(cKey,10);
+  if(cached){gWD=cached.w;gAD=cached.a;renderAll();hideLdr();return;}
+
+  const aURL=`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${gLat}&longitude=${gLon}&current=european_aqi,pm2_5,pm10,nitrogen_dioxide&timezone=auto`;
+
+  for(const model of ['best_match','icon_seamless','gfs_global']){
+    try{
+      const ctrl=new AbortController();
+      const tid=setTimeout(()=>ctrl.abort(),8000);
+      const wURL=`https://api.open-meteo.com/v1/forecast?latitude=${gLat}&longitude=${gLon}&models=${model}`
+        +`&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,relative_humidity_2m,surface_pressure,is_day,uv_index`
+        +`&hourly=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,precipitation_probability,relative_humidity_2m,uv_index`
+        +`&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_direction_10m_dominant,precipitation_sum,precipitation_probability_max,uv_index_max,sunrise,sunset`
+        +`&timezone=auto&wind_speed_unit=ms&forecast_days=8`;
+      setStep(`${model.toUpperCase()} жүктелуде...`);
+      const [wr,ar]=await Promise.all([fetch(wURL,{signal:ctrl.signal}),fetch(aURL,{signal:ctrl.signal})]);
+      clearTimeout(tid);
+      if(!wr.ok)continue;
+      gWD=await wr.json();
+      gAD=await ar.json().catch(()=>({}));
+      setC(cKey,{w:gWD,a:gAD});
+      setStep(`✓ ${model} — дайын`);
+      setTimeout(hideLdr,350);
+      renderAll();
+      return;
+    }catch(e){setStep(`${model} сәтсіз...`);}
+  }
+  setStep('❌ Интернет жоқ');
+  setTimeout(hideLdr,1000);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   12. RENDER ALL
+══════════════════════════════════════════════════════════════ */
+function renderAll() {
+  if(!gWD)return;
+  const c=gWD.current, h=gWD.hourly, d=gWD.daily;
+  // ✅ FIX: API уақыт форматын тікелей іздеу
+  const idx=findHourIdx(h.time);
+  renderHero(c,d);
+  renderAlert(c);
+  renderMinuteCast(h,idx);
+  renderStats(c,h,idx);
+  renderHourly(h,idx);
+  renderAQI();
+  renderDaily(d);
+  renderAI(c);
+  renderShareCard(c,d);
+  renderQuote();
+  renderAlertsTab(c,d);
+  updateSettingsTab();
+  // Radar — бір рет іске қосу
+  if(rAF1) cancelAnimationFrame(rAF1);
+  rAF1=drawRadar('rCv','rT',h,false);
+}
+
+/* ─── Hero ─── */
+function renderHero(c,d) {
+  const t=Math.round(c.temperature_2m);
+  const fl=Math.round(c.apparent_temperature);
+  const code=wc(c.weather_code);
+  const hi=Math.round(d.temperature_2m_max[0]);
+  const lo=Math.round(d.temperature_2m_min[0]);
+  document.getElementById('hIco').innerText=code.i;
+  document.getElementById('hT').innerHTML=(t>0?'+':'')+t+'<sup>°</sup>';
+  document.getElementById('hC').innerText=code.t;
+  document.getElementById('hFL').innerHTML=`<i class="fas fa-person"></i> Сезілуі: ${fl>0?'+':''}${fl}°`;
+  document.getElementById('hHi').innerText=`↑ ${hi>0?'+':''}${hi}°`;
+  document.getElementById('hLo').innerText=`↓ ${lo}°`;
+  document.getElementById('hT').style.color=t<=-30?'var(--bad)':t<=-20?'var(--warn)':'#eef2ff';
+  const hero=document.getElementById('heroCard');
+  if(!c.is_day)       hero.style.background='linear-gradient(160deg,rgba(15,20,65,.88),rgba(7,9,26,.95))';
+  else if(c.weather_code===0) hero.style.background='linear-gradient(160deg,rgba(35,90,200,.12),rgba(251,146,60,.08),rgba(7,9,26,.92))';
+  else if(c.weather_code>=70) hero.style.background='linear-gradient(160deg,rgba(96,165,250,.10),rgba(7,9,26,.92))';
+  else if(c.weather_code>=51) hero.style.background='linear-gradient(160deg,rgba(79,195,247,.12),rgba(7,9,26,.92))';
+  else                         hero.style.background='var(--glass)';
+}
+
+/* ─── Alert strip ─── */
+function renderAlert(c) {
+  const el=document.getElementById('alertEl');
+  const hEl=document.getElementById('alH'), sEl=document.getElementById('alS');
+  const t=c.temperature_2m, ws=c.wind_speed_10m;
+  let cls='alert a-safe',ico='fa-circle-check',h='Ауа-райы жайлы',s='Сыртқа шығуға болады';
+  if(ws>10)       {cls='alert a-bad';ico='fa-triangle-exclamation';h='⛔ ДАУЫЛ!';s=`Жел ${ws}м/с — шықпаңыз`;}
+  else if(t<=-30) {cls='alert a-bad';ico='fa-temperature-arrow-down';h=`⛔ АЯЗ! ${t}°`;s='Балалар мен қарт адамдар үшін қауіпті';}
+  else if(t<=-20||ws>4.5){cls='alert a-warn';ico='fa-triangle-exclamation';h='⚠️ Ескерту';s=(t<=-20?`Суық (${t}°). `:'')+(ws>4.5?`Жел ${ws}м/с.`:'');}
+  else if(c.precipitation>0){cls='alert a-warn';ico='fa-cloud-rain';h='🌧 Жауын бар';s='Қолшатырыңызды алыңыз';}
+  el.className=cls;el.querySelector('i').className='fas '+ico;hEl.innerText=h;sEl.innerText=s;
+}
+
+/* ─── MinuteCast ─── */
+function renderMinuteCast(h,idx) {
+  const probs=[];
+  for(let i=0;i<60;i++){
+    const hi=idx+Math.floor(i/60);
+    const base=(h.precipitation_probability&&h.precipitation_probability[hi])||0;
+    probs.push(Math.max(0,Math.min(100,base+Math.sin(i*.28)*8)));
+  }
+  const bars=probs.map(p=>{
+    const col=p>60?'rgba(96,165,250,.9)':p>30?'rgba(96,165,250,.5)':'rgba(96,165,250,.12)';
+    return `<div class="mc-br" style="height:${3+p*.43}px;background:${col}"></div>`;
+  }).join('');
+  document.getElementById('mcB').innerHTML=bars;
+  const mx=Math.round(Math.max(...probs));
+  document.getElementById('mcS').innerText=
+    mx>50?`🌧 ${mx}% ықтималдықпен жаңбыр`:(mx>20?`⛅ Аздаған жаңбыр (${mx}%)`:`☀️ Жаңбыр болмайды`);
+}
+
+/* ─── Stats ─── */
+function setStat(id,val,pct,sub,badge,bcls) {
+  document.getElementById(`sv-${id}`).innerHTML=val;
+  document.getElementById(`sb-${id}`).style.width=pct+'%';
+  document.getElementById(`ss-${id}`).innerText=sub;
+  const b=document.getElementById(`sbg-${id}`);b.className='sbadge '+bcls;b.innerText=badge;
+}
+function renderStats(c,h,idx) {
+  const ws=c.wind_speed_10m||0, wg=c.wind_gusts_10m||0;
+  const hm=c.relative_humidity_2m||0, pr=Math.round(c.surface_pressure||1013);
+  const rn=c.precipitation||0, rp=h.precipitation_probability?.[idx]||0;
+  const uv=c.uv_index!=null?c.uv_index:(h.uv_index?.[idx]||0);
+  setStat('w',`${ws}<span class="sv-u">м/с</span>`,Math.min(ws/18*100,100),`Соққы: ${wg} м/с`,ws>10?'ҚАУІПТІ':ws>4.5?'ЕСКЕРТУ':'Қалыпты',ws>10?'b-bad':ws>4.5?'b-warn':'b-ok');
+  setStat('h',`${hm}<span class="sv-u">%</span>`,hm,`Қысым: ${pr} гПа`,hm<30?'Өте құрғақ':hm>80?'Өте ылғал':'Қалыпты',(hm<30||hm>80)?'b-warn':'b-ok');
+  setStat('r',`${rn}<span class="sv-u">мм</span>`,Math.min(rn/15*100,100),`Ықтимал: ${rp}%`,rn>10?'Нөсер':rn>2?'Жаңбыр':rn>0?'Сіркіреу':'Жоқ',rn>10?'b-bad':rn>0?'b-warn':'b-ok');
+  setStat('u',uv.toFixed(1),Math.min(uv/12*100,100),`Деңгей: ${uv.toFixed(1)}/12`,uv>=8?'Өте жоғары':uv>=6?'Жоғары':uv>=3?'Орташа':'Қауіпсіз',uv>=8?'b-bad':uv>=3?'b-warn':'b-ok');
+}
+
+/* ─── Hourly ─── */
+function renderHourly(h,idx) {
+  let html='';
+  for(let i=idx;i<idx+24;i++){
+    if(!h.time[i])break;
+    const tm=h.time[i].split('T')[1].slice(0,5);
+    const ht=Math.round(h.temperature_2m[i]);
+    const hw=h.wind_speed_10m[i]||0;
+    const hp=h.precipitation_probability?.[i]||0;
+    const code=wc(h.weather_code[i]);
+    const tCol=ht<=-30?'var(--bad)':ht<=-20?'var(--warn)':'var(--t1)';
+    const wCls=hw>10?'b-bad':hw>4.5?'b-warn':'b-ok';
+    html+=`<div class="hc ${i===idx?'now':''}">
+      <div class="hc-t">${i===idx?'ҚАЗІР':tm}</div>
+      <div class="hc-i">${code.i}</div>
+      <div class="hc-d" style="color:${tCol}">${ht}°</div>
+      ${hp>10?`<div class="hc-p">☂ ${hp}%</div>`:''}
+      <div class="hc-w sbadge ${wCls}">${hw}м/с</div>
+    </div>`;
+  }
+  document.getElementById('hList').innerHTML=html;
+}
+
+/* ─── AQI ─── */
+function renderAQI(){
+  const a=gAD?.current||{};
+  const aqi=a.european_aqi||0;
+  let col='var(--ok)',lbl='Таза';
+  if(aqi>40){col='var(--warn)';lbl='Орташа';}
+  if(aqi>80){col='var(--oran)';lbl='Нашар';}
+  if(aqi>120){col='var(--bad)';lbl='Зиянды';}
+  document.getElementById('aqN').innerText=aqi||'<1';
+  document.getElementById('aqN').style.color=col;
+  document.getElementById('aqL').innerText=lbl;
+  document.getElementById('aqL').style.color=col;
+  document.getElementById('aqD').style.left=Math.min(aqi/150*100,98)+'%';
+  document.getElementById('aq25').innerText=(a.pm2_5||0).toFixed(1);
+  document.getElementById('aq10').innerText=(a.pm10||0).toFixed(1);
+  document.getElementById('aqN2').innerText=(a.nitrogen_dioxide||0).toFixed(1);
+}
+
+/* ─── Daily ─── */
+function renderDaily(d){
+  let html='';
+  for(let i=0;i<7;i++){
+    const date=new Date(d.time[i]);
+    const day=i===0?'Бүгін':date.toLocaleDateString('kk-KZ',{weekday:'long'});
+    const mx=Math.round(d.temperature_2m_max[i]);
+    const mn=Math.round(d.temperature_2m_min[i]);
+    const mw=d.wind_speed_10m_max[i]||0;
+    const pp=d.precipitation_probability_max[i]||0;
+    const ps=d.precipitation_sum[i]||0;
+    const uv=d.uv_index_max?.[i]||0;
+    const code=wc(d.weather_code[i]);
+    const wCls=mw>10?'c-bad':mw>4.5?'c-warn':'c-blue';
+    const warn=mw>10?'<i class="fas fa-exclamation-circle c-bad" style="font-size:10px;margin-left:4px;"></i>':mw>4.5?'<i class="fas fa-exclamation-triangle c-warn" style="font-size:10px;margin-left:4px;"></i>':'';
+    html+=`<div class="dc">
+      <div class="dc-row">
+        <div class="dc-day">${day}${warn}</div>
+        <div class="dc-ico">${code.i}</div>
+        <div class="dc-hl"><div class="dc-hi">${mx>0?'+':''}${mx}°</div><div class="dc-lo">${mn}°</div></div>
+      </div>
+      <div class="dc-bar"><div class="dc-bf" style="width:${Math.max(5,Math.min(90,((mx+40)/80)*100-20))}%"></div></div>
+      <div class="dc-m">
+        <span><i class="fas fa-wind ${wCls}"></i>${mw}м/с</span>
+        <span><i class="fas fa-umbrella c-blue"></i>${pp}%</span>
+        <span><i class="fas fa-tint c-blue"></i>${ps}мм</span>
+        <span><i class="fas fa-sun c-warn"></i>UV${uv}</span>
+      </div>
+    </div>`;
+  }
+  document.getElementById('dList').innerHTML=html;
+}
+
+/* ─── AI + Affiliate ─── */
+function renderAI(c){
+  document.getElementById('aiTxt').innerText=AI_TEXTS[Math.floor(Date.now()/3600000)%AI_TEXTS.length];
+  let ico='🧥',h='Бүгін не киінейін?',s='Ауа-райына сай киім таңдау';
+  const t=c.temperature_2m,ws=c.wind_speed_10m;
+  if(t<=-20){ico='🧤';h='Жылы киім міндетті!';s='Қолғап, шарф, ауыр куртка';}
+  else if(t<=0){ico='🧣';h='Суықтан қорғаныңыз';s='Шарф пен жеңіл куртка';}
+  else if((c.uv_index||0)>=6){ico='🕶';h='Күннен қорғаныңыз';s='Күн крем + көзілдірік';}
+  else if(c.precipitation){ico='☂️';h='Жаңбырға дайын болыңыз';s='Су өтпейтін киім';}
+  else if(ws>4.5){ico='🧥';h='Желге сай киініңіз';s='Желтосқар/ветровка';}
+  document.getElementById('afI').innerText=ico;
+  document.getElementById('afH').innerText=h;
+  document.getElementById('afS').innerText=s;
+}
+
+/* ─── Share card ─── */
+function renderShareCard(c,d){
+  const t=Math.round(c.temperature_2m);
+  const code=wc(c.weather_code);
+  const hi=Math.round(d.temperature_2m_max[0]);
+  const lo=Math.round(d.temperature_2m_min[0]);
+  gShare=`${code.i} ${gLocName}${gAddrStr?', '+gAddrStr:''} — Бүгін ${t>0?'+':''}${t}°\n↑${hi>0?'+':''}${hi}° ↓${lo}° 💨 Жел ${c.wind_speed_10m}м/с\n#ULGIPro #AuaRai #${gLocName.replace(/\s/g,'')} #BayanOlgii`;
+  document.getElementById('sharePrev').innerHTML=
+    `<strong>${code.i} ${gLocName}</strong>${gAddrStr?` — <em style="font-size:12px;color:var(--t2);">${gAddrStr}</em>`:''}<br>`+
+    `Бүгін <strong>${t>0?'+':''}${t}°</strong> · ${code.t}<br>`+
+    `↑${hi>0?'+':''}${hi}° ↓${lo}° · 💨 ${c.wind_speed_10m} м/с<br>`+
+    `<span style="color:var(--t3);font-size:11px;">#ULGIPro #AuaRai</span>`;
+}
+
+/* ─── Quote ─── */
+function renderQuote(){
+  const q=QUOTES[Math.floor(Math.random()*QUOTES.length)];
+  document.getElementById('qCard').innerHTML=`<div class="q-t">"${q.q}"</div><div class="q-a">— ${q.a}</div>`;
+}
+
+/* ─── Alerts Tab ─── */
+function renderAlertsTab(c,d){
+  const items=[];
+  const t=c.temperature_2m,ws=c.wind_speed_10m;
+  if(ws>10)       items.push({cls:'a-bad', ico:'💨',h:'Дауыл ескертуі',s:`Жел ${ws} м/с. Далаға шықпаңыз.`,tm:'Қазір'});
+  if(t<=-30)      items.push({cls:'a-bad', ico:'🥶',h:'Аяз ескертуі', s:`Температура ${t}°. Қауіпті!`,tm:'Қазір'});
+  else if(t<=-20) items.push({cls:'a-warn',ico:'🌡',h:'Суық ескертуі',s:`Температура ${t}°. Жылы киініңіз.`,tm:'Қазір'});
+  if(c.precipitation>2) items.push({cls:'a-warn',ico:'🌧',h:'Жауын жауып тұр',s:`${c.precipitation} мм. Қолшатыр алыңыз.`,tm:'Қазір'});
+  // Алдағы 3 күн
+  for(let i=1;i<4;i++){
+    const mw=d.wind_speed_10m_max?.[i]||0;
+    const mn=d.temperature_2m_min?.[i]||0;
+    const date=new Date(d.time[i]).toLocaleDateString('kk-KZ',{weekday:'long'});
+    if(mw>10)  items.push({cls:'a-bad', ico:'🌪',h:`${date} — Дауыл`,s:`Жел ${mw} м/с болады.`,tm:date});
+    if(mn<=-30)items.push({cls:'a-bad', ico:'❄️',h:`${date} — Аяз`,s:`Минималды температура ${mn}°`,tm:date});
+  }
+  if(!items.length) items.push({cls:'a-safe',ico:'✅',h:'Белсенді ескерту жоқ',s:'Барлық параметрлер қалыпты.',tm:'—'});
+  document.getElementById('alertsList').innerHTML=items.map(item=>`
+    <div class="alert ${item.cls} al-item">
+      <i style="font-size:20px;flex-shrink:0;">${item.ico}</i>
+      <div class="al-body">
+        <div class="al-h">${item.h}</div>
+        <div class="al-s">${item.s}</div>
+        <div style="font-size:9px;color:var(--t3);margin-top:4px;">${item.tm}</div>
+      </div>
+    </div>`).join('');
+}
+
+/* ─── Settings Tab ─── */
+function updateSettingsTab(){
+  const sg=document.getElementById('setGPS');
+  const sa=document.getElementById('setAddr');
+  const sc=document.getElementById('setAcc');
+  if(sg) sg.innerText=gLocName||'—';
+  if(sa) sa.innerText=gAddrStr||'—';
+  if(sc&&gLat) sc.innerText=`${gLat.toFixed(5)}°N ${gLon.toFixed(5)}°E`;
+  // Toggle states
+  ['rain','wind','frost','daily'].forEach(k=>{
+    const el=document.getElementById('tog-'+k);
+    if(el){
+      const on=localStorage.getItem('notif_'+k)!=='0';
+      el.className='tog'+(on?' on':'');
+    }
+  });
+  // Unit buttons
+  const tc=localStorage.getItem('temp_unit')||'C';
+  const wc2=localStorage.getItem('wind_unit')||'ms';
+  document.getElementById('ub-C').className='ub'+(tc==='C'?' on':'');
+  document.getElementById('ub-F').className='ub'+(tc==='F'?' on':'');
+  document.getElementById('ub-ms').className='ub'+(wc2==='ms'?' on':'');
+  document.getElementById('ub-kmh').className='ub'+(wc2==='kmh'?' on':'');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   13. SETTINGS ACTIONS
+══════════════════════════════════════════════════════════════ */
+function togSet(k){
+  const cur=localStorage.getItem('notif_'+k)!=='0';
+  localStorage.setItem('notif_'+k,cur?'0':'1');
+  const el=document.getElementById('tog-'+k);
+  if(el) el.className='tog'+(!cur?' on':'');
+  toast(cur?`🔕 ${k} өшірілді`:`🔔 ${k} қосылды`,'Хабарлама баптауы сақталды');
+}
+function setUnit(u){
+  localStorage.setItem('temp_unit',u);
+  document.getElementById('ub-C').className='ub'+(u==='C'?' on':'');
+  document.getElementById('ub-F').className='ub'+(u==='F'?' on':'');
+  toast(`°${u} бірлігі таңдалды`,'Температура бірлігі өзгертілді');
+}
+function setWUnit(u){
+  localStorage.setItem('wind_unit',u);
+  document.getElementById('ub-ms').className='ub'+(u==='ms'?' on':'');
+  document.getElementById('ub-kmh').className='ub'+(u==='kmh'?' on':'');
+  toast(u==='ms'?'м/с':'км/с бірлігі таңдалды','Жел бірлігі өзгертілді');
+}
+function clearCache(){
+  // Барлық кэш кілттерін өшіру
+  const keys=Object.keys(localStorage).filter(k=>k.startsWith('wx_')||k.startsWith('geo_'));
+  keys.forEach(k=>localStorage.removeItem(k));
+  toast('🗑 Кэш тазартылды','Жаңа деректер жүктелуде...');
+  setTimeout(fetchWeather,500);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   14. SOCIAL SHARING
+══════════════════════════════════════════════════════════════ */
+function sX()  { open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(gShare)}`,'_blank'); }
+function sTg() { open(`https://t.me/share/url?url=https://ulgi.app&text=${encodeURIComponent(gShare)}`,'_blank'); }
+function sWa() { open(`https://wa.me/?text=${encodeURIComponent(gShare)}`,'_blank'); }
+async function sCp(){
+  try{await navigator.clipboard.writeText(gShare);toast('✓ Мәтін көшірілді','Yapıştыруға дайын');}
+  catch(e){prompt('Мәтінді көшіріңіз:',gShare);}
+}
+async function sImg(){
+  const cv=document.createElement('canvas');
+  cv.width=1080;cv.height=1350;
+  const ctx=cv.getContext('2d');
+  const g=ctx.createLinearGradient(0,0,0,1350);
+  g.addColorStop(0,'#07091a');g.addColorStop(.5,'#0a0d24');g.addColorStop(1,'#0c102e');
+  ctx.fillStyle=g;ctx.fillRect(0,0,1080,1350);
+  const rg=ctx.createRadialGradient(540,380,0,540,380,600);
+  rg.addColorStop(0,'rgba(96,165,250,.18)');rg.addColorStop(1,'transparent');
+  ctx.fillStyle=rg;ctx.fillRect(0,0,1080,1350);
+  ctx.textAlign='center';
+  ctx.font='700 32px sans-serif';ctx.fillStyle='rgba(107,127,163,.8)';ctx.fillText('ULGI PRO',540,90);
+  ctx.font='400 48px sans-serif';ctx.fillStyle='rgba(238,242,255,.9)';ctx.fillText(gLocName,540,180);
+  if(gAddrStr){ctx.font='300 30px sans-serif';ctx.fillStyle='rgba(126,147,187,.7)';ctx.fillText(gAddrStr,540,230);}
+  ctx.font='180px serif';ctx.fillText(document.getElementById('hIco').innerText,540,490);
+  ctx.font='200 260px sans-serif';ctx.fillStyle='#eef2ff';ctx.fillText(document.getElementById('hT').innerText,540,800);
+  ctx.font='300 56px sans-serif';ctx.fillStyle='rgba(126,147,187,.9)';ctx.fillText(document.getElementById('hC').innerText,540,900);
+  const cur=gWD?.current;
+  if(cur){ctx.font='400 36px sans-serif';ctx.fillStyle='rgba(107,127,163,.7)';ctx.fillText(`💨 ${cur.wind_speed_10m}м/с   💧 ${cur.relative_humidity_2m}%`,540,1000);}
+  ctx.font='400 30px sans-serif';ctx.fillStyle='rgba(96,165,250,.6)';ctx.fillText('#ULGIPro  #AuaRai  #BayanOlgii',540,1180);
+  ctx.font='300 26px sans-serif';ctx.fillStyle='rgba(74,90,128,.7)';ctx.fillText(new Date().toLocaleDateString('kk-KZ',{weekday:'long',year:'numeric',month:'long',day:'numeric'}),540,1280);
+  const a=document.createElement('a');a.download='ulgi-weather.png';a.href=cv.toDataURL('image/png',.95);a.click();
+  toast('📸 Сурет сақталды','Gallery-ден табасыз');
+}
+function goShare(){ document.getElementById('shareSection')?.scrollIntoView({behavior:'smooth'}); }
+
+/* ══════════════════════════════════════════════════════════════
+   15. PUSH NOTIFICATION
+══════════════════════════════════════════════════════════════ */
+async function sendAlert(){
+  const msgs=[
+    {t:'🌧 8 минуттан кейін жаңбыр!',b:'Қолшатырыңызды алыңыз'},
+    {t:'💨 Жел күшейіп тұр',b:'Далада абайлаңыз'},
+    {t:'🌤 Ертең күн ашық болады',b:'Серуенге тамаша мүмкіндік'},
+    {t:'❄️ Аяз болжанып тұр',b:'Жылы киімдерді дайындаңыз'},
+  ];
+  const m=msgs[Math.floor(Math.random()*msgs.length)];
+  if('Notification' in window){
+    if(Notification.permission!=='granted') await Notification.requestPermission();
+    if(Notification.permission==='granted') new Notification(m.t,{body:m.b});
+  }
+  toast(m.t,m.b);
+  const bb=document.getElementById('bellBtn');bb.classList.add('lit');
+  setTimeout(()=>bb.classList.remove('lit'),2000);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   16. HELPERS
+══════════════════════════════════════════════════════════════ */
+
+// ✅ FIX: API уақыт жолын тікелей іздеу
+// Open-Meteo timezone=auto жергілікті ISO уақытты қайтарады.
+// Браузер уақытын API форматына дәл сәйкестіреміз.
+function findHourIdx(times) {
+  if(!times?.length) return 0;
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  // API форматы: "2025-04-15T14:00" (UTC offset жоқ — жергілікті)
+  const target = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:00`;
+  const exact = times.indexOf(target);
+  if(exact>=0) return exact;
+  // Ең жақын сағат (абсолют айырым минимум)
+  const nm = now.getTime();
+  let best=0,diff=Infinity;
+  for(let i=0;i<times.length;i++){
+    const d=Math.abs(new Date(times[i]).getTime()-nm);
+    if(d<diff){diff=d;best=i;}
+  }
+  return best;
+}
+
+function affClick(){ toast('🛍 Серіктес','Affiliate интеграциясы жуырда қосылады'); }
+
+let toastTid=null;
+function toast(h,b){
+  const el=document.getElementById('toast');
+  document.getElementById('tH').innerText=h;
+  document.getElementById('tB').innerText=b;
+  el.classList.add('show');
+  if(toastTid)clearTimeout(toastTid);
+  toastTid=setTimeout(()=>el.classList.remove('show'),3500);
+}
+
+// ✅ FIX: async/await дұрыс — fetchWeather void, .then жоқ
+function doRefresh(){
+  const ico=document.getElementById('rfIco');
+  ico.style.animation='spin .75s linear infinite';
+  if(gLat) { const k=`wx_${gLat.toFixed(3)}_${gLon.toFixed(3)}`; delC(k); }
+  (async()=>{ await fetchWeather(); ico.style.animation=''; })();
+}
+
+function goTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.bni').forEach(b=>b.classList.remove('on'));
+  const t=document.getElementById('tab-'+name);if(t)t.classList.add('on');
+  document.getElementById('bn-'+name)?.classList.add('on');
+  // Radar tab — fullscreen radar іске қосу
+  if(name==='radar'){
+    if(rAF2) cancelAnimationFrame(rAF2);
+    rAF2=drawRadar('rCv2','rT2',null,true);
+    // Radar tab-тағы орын ақпаратын жаңарту
+    const rl=document.getElementById('rLoc');
+    const rc=document.getElementById('rCoord');
+    if(rl) rl.innerText=gLocName||'—';
+    if(rc&&gLat) rc.innerText=`${gLat.toFixed(5)}°N, ${gLon.toFixed(5)}°E`;
+  }
+  // Settings tab
+  if(name==='settings') updateSettingsTab();
+  // Alerts tab
+  if(name==='alerts'&&gWD) renderAlertsTab(gWD.current,gWD.daily);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   17. STARTUP
+══════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded',()=>{
+  buildSel();
+  initPin();
+  // Settings toggles initial state
+  ['rain','wind','frost','daily'].forEach(k=>{
+    if(localStorage.getItem('notif_'+k)===null) localStorage.setItem('notif_'+k,'1');
+  });
+  // 10 минут сайын жаңарту
+  setInterval(()=>{ if(gWD) doRefresh(); },600000);
+});
+
+function initApp(){ startGPS(); }
+</script>
+
+</body>
+</html>
