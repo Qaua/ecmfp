@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ULGI Pro — 30 Кіру Коды</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#040b18;color:#e8f0ff;font-family:'DM Sans',system-ui,sans-serif;padding:20px;min-height:100vh}
+.header{text-align:center;margin-bottom:32px}
+.logo{font-size:42px;font-weight:300;letter-spacing:12px;background:linear-gradient(135deg,#63f0ff,#4aa0ff,#8060ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-family:Georgia,serif}
+.subtitle{font-size:11px;color:#3a5080;letter-spacing:3px;text-transform:uppercase;margin-top:6px}
+.warning{background:rgba(255,48,80,.08);border:1px solid rgba(255,48,80,.2);border-radius:12px;padding:14px 18px;margin-bottom:24px;font-size:12px;color:#ff8099;line-height:1.7}
+.warning strong{color:#ff3050;display:block;margin-bottom:4px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:32px}
+.card{background:#0a1530;border:1px solid rgba(100,160,255,.15);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:14px;transition:border-color .2s}
+.card.used{opacity:.45;border-color:rgba(255,48,80,.2)}
+.num{font-size:11px;color:#3a5080;font-weight:700;min-width:22px}
+.code{font-size:18px;font-weight:700;letter-spacing:4px;color:#63f0ff;font-family:monospace;flex:1}
+.card.used .code{color:#ff3050;text-decoration:line-through}
+.status{font-size:9px;font-weight:800;padding:3px 8px;border-radius:6px;white-space:nowrap}
+.s-free{background:rgba(32,232,160,.1);color:#20e8a0}
+.s-used{background:rgba(255,48,80,.1);color:#ff3050}
+.device{font-size:8px;color:#3a5080;margin-top:3px;font-family:monospace}
+.expiry{font-size:9px;color:#7090c0;margin-top:2px}
+.footer{text-align:center;font-size:10px;color:#3a5080;line-height:2;border-top:1px solid rgba(100,160,255,.1);padding-top:20px}
+.price-info{background:linear-gradient(135deg,rgba(128,96,255,.1),rgba(74,160,255,.06));border:1px solid rgba(128,96,255,.2);border-radius:14px;padding:16px 20px;margin-bottom:24px}
+.price-info h3{font-size:16px;font-weight:600;margin-bottom:10px;color:#e8f0ff}
+.price-info ul{font-size:12px;color:#7090c0;line-height:2.2;list-style:none;padding:0}
+.price-info ul li::before{content:'✓ ';color:#63f0ff}
+.btn{background:linear-gradient(135deg,#2060e0,#8060ff);color:#fff;border:none;padding:10px 20px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;margin-top:10px;width:100%}
+.btn:active{opacity:.85}
+.stats{display:flex;gap:12px;margin-bottom:20px}
+.stat{background:#0a1530;border:1px solid rgba(100,160,255,.15);border-radius:10px;padding:12px;flex:1;text-align:center}
+.stat-num{font-size:28px;font-weight:300;font-family:Georgia,serif}
+.stat-lbl{font-size:8px;color:#3a5080;text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+.n-free{color:#20e8a0}.n-used{color:#ff3050}.n-total{color:#63f0ff}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="logo">ULGI</div>
+  <div class="subtitle">Pro — 30 Кіру Коды · Басқару Панелі</div>
+</div>
+
+<div class="warning">
+  <strong>⚠️ МАҢЫЗДЫ — Бір код = Бір құрылғы</strong>
+  Бұл панель тек осы браузерде сақталған пайдалану деректерін көрсетеді (localStorage). Басқа құрылғылардағы пайдалануды көру үшін серверлік база қажет.<br>
+  Әр код тек БІР телефонда жұмыс істейді. Кодты пайдаланушыға берген соң ол басқа телефонда қайта пайдалана алмайды. Кодты жоғалтқан немесе телефонын ауыстырған пайдаланушыға жаңа код беріңіз.
+</div>
+
+<div class="price-info">
+  <h3>💎 ULGI Pro — Не қосылады?</h3>
+  <ul>
+    <li>14 күн болжам (Open-Meteo 16-day)</li>
+    <li>Risk AI — Bayan-Ölgii Mountain Safety</li>
+    <li>Gemini AI — бағыт талдауы</li>
+    <li>Push хабарламалар (дауыл, аяз, болжам)</li>
+    <li>Климат графиктері 2021-2024</li>
+    <li>PWA — офлайн орнату</li>
+    <li>3 тіл: қазақ / монгол / ағылшын</li>
+    <li>Live Radar · AQI · MinuteCast</li>
+  </ul>
+  <button class="btn" onclick="window.print()">🖨️ Баспаға шығару</button>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-num n-total" id="sTotal">30</div><div class="stat-lbl">Барлығы</div></div>
+  <div class="stat"><div class="stat-num n-free" id="sFree">30</div><div class="stat-lbl">Бос</div></div>
+  <div class="stat"><div class="stat-num n-used" id="sUsed">0</div><div class="stat-lbl">Пайдаланылған</div></div>
+</div>
+
+<div class="grid" id="codeGrid"></div>
+
+<div class="footer">
+  ULGI Pro v32 · Баян-Өлгий Risk Intelligence Platform<br>
+  Кодтар 30 күнге жарамды · Бір код — бір құрылғы<br>
+  Деректер браузерде сақталады (localStorage)
+</div>
+
+<script>
+// 30 Codes — cryptographically generated
+const CODES_LIST = [
+  {code:'ULGI-A7K2',label:'Код #01'},
+  {code:'BYAN-X9P4',label:'Код #02'},
+  {code:'ALTAI-M3Q',label:'Код #03'},
+  {code:'OLGII-W6R',label:'Код #04'},
+  {code:'TSNG-H8B1',label:'Код #05'},
+  {code:'SGSY-V2N5',label:'Код #06'},
+  {code:'TLBO-Y7C3',label:'Код #07'},
+  {code:'DAYN-F4L9',label:'Код #08'},
+  {code:'KHUS-Z1D6',label:'Код #09'},
+  {code:'BLGN-T5J8',label:'Код #10'},
+  {code:'BUYN-S9K2',label:'Код #11'},
+  {code:'DLUN-E3W7',label:'Код #12'},
+  {code:'NGUR-I6A4',label:'Код #13'},
+  {code:'KTON-R2M8',label:'Код #14'},
+  {code:'ULNH-Q5X1',label:'Код #15'},
+  {code:'NOMA-G8P3',label:'Код #16'},
+  {code:'EGLE-U4B6',label:'Код #17'},
+  {code:'STPE-C7F2',label:'Код #18'},
+  {code:'MNGL-J9H5',label:'Код #19'},
+  {code:'KAZK-D1V8',label:'Код #20'},
+  {code:'RIDR-L6Y3',label:'Код #21'},
+  {code:'TIGA-W2N9',label:'Код #22'},
+  {code:'SIBR-K4Z7',label:'Код #23'},
+  {code:'ALTY-B8Q1',label:'Код #24'},
+  {code:'MNTN-X3S5',label:'Код #25'},
+  {code:'SNWF-T7E2',label:'Код #26'},
+  {code:'WOLF-H1P6',label:'Код #27'},
+  {code:'EAGL-M9D4',label:'Код #28'},
+  {code:'STPR-F5L8',label:'Код #29'},
+  {code:'UPRO-Z0X9',label:'Код #30'},
+];
+
+// Issue date + 30 days expiry
+const ISSUE_DATE = new Date();
+const EXPIRY_DATE = new Date(ISSUE_DATE.getTime() + 30*24*60*60*1000);
+
+function getUsageData(code) {
+  const raw = localStorage.getItem('cd_'+code.replace(/-/g,''));
+  if(!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+function renderGrid() {
+  const grid = document.getElementById('codeGrid');
+  let free = 0, used = 0;
+  grid.innerHTML = CODES_LIST.map((item, idx) => {
+    const usage = getUsageData(item.code);
+    const isUsed = !!usage;
+    if(isUsed) used++; else free++;
+    const now = new Date();
+    const exp = new Date(isUsed && usage.exp ? usage.exp : EXPIRY_DATE);
+    const daysLeft = Math.ceil((exp - now) / (1000*60*60*24));
+    return `<div class="card${isUsed?' used':''}">
+      <div class="num">${String(idx+1).padStart(2,'0')}</div>
+      <div style="flex:1">
+        <div class="code">${item.code}</div>
+        ${isUsed
+          ? `<div class="device">📱 ${usage.ua||'Белгісіз'}</div>
+             <div class="device">🕐 ${usage.date||'—'}</div>`
+          : `<div class="expiry">📅 ${daysLeft} күн қалды</div>`
+        }
+      </div>
+      <div>
+        <div class="status ${isUsed?'s-used':'s-free'}">${isUsed?'ПАЙДАЛАНЫЛДЫ':'БОС'}</div>
+        ${isUsed ? `<div style="margin-top:4px"><button onclick="resetCode('${item.code}')" style="background:rgba(255,48,80,.15);border:1px solid rgba(255,48,80,.3);color:#ff3050;padding:3px 8px;border-radius:6px;font-size:9px;cursor:pointer;font-weight:700">СИФЫРЛАУ</button></div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('sFree').innerText = free;
+  document.getElementById('sUsed').innerText = used;
+}
+
+function resetCode(code) {
+  if(confirm(`"${code}" кодын сифырлайсыз ба?\nБасқа құрылғыда пайдаланылуы мүмкін болады.`)) {
+    localStorage.removeItem('cd_'+code.replace(/-/g,''));
+    renderGrid();
+  }
+}
+
+// Sync with user-side usage
+// When user enters a code in the app, we mirror it here for admin view
+window.addEventListener('storage', () => renderGrid());
+
+renderGrid();
+
+// Auto-refresh every 10 seconds
+setInterval(renderGrid, 10000);
+</script>
+</body>
+</html>
